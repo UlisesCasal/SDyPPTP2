@@ -1,46 +1,23 @@
-name: Orchestrator CI/CD
+name: Frontend CI/CD
 
 on:
   push:
     branches:
       - main
     paths:
-      - "sdypp/**"
-      - ".github/workflows/orchestrator-dockerhub.yml"
+      - "frontend/**"
+      - ".github/workflows/frontend-dockerhub.yml"
   pull_request:
     branches:
       - main
     paths:
-      - "sdypp/**"
-      - ".github/workflows/orchestrator-dockerhub.yml"
+      - "frontend/**"
+      - ".github/workflows/frontend-dockerhub.yml"
   workflow_dispatch:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: sdypp
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: maven
-          cache-dependency-path: sdypp/pom.xml
-
-      - name: Run tests
-        run: ./mvnw -B clean test
-
   build-and-push:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,7 +38,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/orchestrator-server
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/frontend-client
           tags: |
             type=raw,value=1.0.0
             type=raw,value=latest
@@ -70,8 +47,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: ./sdypp
-          file: ./sdypp/Dockerfile
+          context: ./frontend/HIT1
+          file: ./frontend/HIT1/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
