@@ -79,8 +79,8 @@ public class RemoteTaskServiceImpl implements RemoteTaskService {
                     duracion);
         } finally {
             if (containerId != null && !containerId.isBlank()) {
-                //dockerRunner.run(List.of("docker", "stop", containerId));
-                //dockerRunner.run(List.of("docker", "rm", containerId));
+                dockerRunner.run(List.of("docker", "stop", containerId));
+                dockerRunner.run(List.of("docker", "rm", containerId));
             }
         }
     }
