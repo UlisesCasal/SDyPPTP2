@@ -4,7 +4,7 @@
 
 ### Requisitos
 
-- Docker Desktop corriendo
+- Docker Desktop o Daemon  corriendo
 
 ### 1. Traer las imágenes
 
