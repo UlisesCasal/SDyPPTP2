@@ -29,6 +29,7 @@ public class Controller {
     public ResponseEntity<RemoteTaskResponse> getRemoteTask(@Valid @RequestBody RemoteTaskRequest request) {
         //El valid valida que los campos del request no sean nulos
         //Si son nulos, lanza una excepción
+        //
 
         RemoteTaskResponse response = remoteTaskService.ejecutarTareaRemota(request);
         return ResponseEntity.ok(response);
