@@ -6,7 +6,8 @@
 # ================================================================
 
 TOTAL_TASKS=${1:-16}
-SERVER_URL="http://localhost:8080/api/hit2/getRemoteTask"
+SERVER_PORT=${SERVER_PORT:-18080}
+SERVER_URL="http://localhost:${SERVER_PORT}/api/hit2/getRemoteTask"
 RESULTS_FILE="benchmark_results.csv"
 
 echo "workers,total_tasks,completed,failed,total_seconds,throughput_per_min" > $RESULTS_FILE
@@ -20,14 +21,23 @@ for WORKERS in 1 2 4 8; do
     # Reiniciar el server con N workers (ajustar según cómo lo levantes)
     # Si usás Docker:
     docker rm -f orchestrator-server 2>/dev/null || true
+    if lsof -iTCP:${SERVER_PORT} -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "El puerto ${SERVER_PORT} ya está ocupado. Liberalo o ejecutá con SERVER_PORT=otro_puerto."
+        exit 1
+    fi
     docker run -d \
         --name orchestrator-server \
-        -p 8080:8080 \
+        -p ${SERVER_PORT}:8080 \
         -e TASK_SERVICE_HOST=host.docker.internal \
         -e HIT2_WORKERS_MAX=$WORKERS \
         --add-host=host.docker.internal:host-gateway \
         -v /var/run/docker.sock:/var/run/docker.sock \
-        ulisescasal/orchestrator-server:latest
+        ulisescasal/orchestrator-server:latest >/tmp/bench_container_id.txt
+
+    if [ $? -ne 0 ]; then
+        echo "No se pudo levantar orchestrator-server."
+        exit 1
+    fi
 
     echo "Esperando que el servidor arranque..."
     sleep 10
