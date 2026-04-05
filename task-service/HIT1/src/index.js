@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-app.post("/ejecutar", (req, res) => {
+app.post("/ejecutar", async (req, res) => {
     //Defino lo que espera recibir cuando se levanta el servicio
     const { calculo, parametros, datosAdicionales } = req.body ?? {};
     try {
@@ -40,6 +40,9 @@ app.post("/ejecutar", (req, res) => {
                 mensaje: "Cálculo no soportado"
             });
         }
+        // Simular procesamiento lento para probar colas
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
         return res.status(200).json({
             status: "OK",
             resultado: resultado,
