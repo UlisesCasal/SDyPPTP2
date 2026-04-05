@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HIT2 - Concurrencia y Exclusión Mutua</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 0.95em;
+        }
+
+        /* Status Panel */
+        .status-panel {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(0,212,255,0.2);
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .status-item {
+            text-align: center;
+        }
+        .status-item .label {
+            font-size: 0.75em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .status-item .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        .status-item .value.warning {
+            color: #ff9800;
+        }
+        .status-item .value.danger {
+            color: #f44336;
+        }
+        #refreshStatus {
+            background: transparent;
+            border: 1px solid #00d4ff;
+            color: #00d4ff;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s;
+        }
+        #refreshStatus:hover {
+            background: #00d4ff;
+            color: #1a1a2e;
+        }
+
+        /* Form Card */
+        .card {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-size: 1.2em;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #bbb;
+            font-size: 0.9em;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            font-size: 15px;
+            background: rgba(0,0,0,0.2);
+            color: #e0e0e0;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #00d4ff;
+            box-shadow: 0 0 0 2px rgba(0,212,255,0.2);
+        }
+        .row {
+            display: flex;
+            gap: 15px;
+        }
+        .row .form-group {
+            flex: 1;
+        }
+        .hint {
+            font-size: 0.78em;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        /* Buttons */
+        .btn {
+            background: linear-gradient(135deg, #00d4ff, #0090b3);
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            font-size: 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, #00e5ff, #00a0cc);
+            transform: translateY(-1px);
+        }
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid #00d4ff;
+            color: #00d4ff;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background: rgba(0,212,255,0.1);
+        }
+
+        /* Result */
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            min-height: 60px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .result.loading {
+            color: #888;
+            font-style: italic;
+            border-color: rgba(255,255,255,0.1);
+        }
+        .result.success {
+            color: #4caf50;
+            border-color: rgba(76,175,80,0.3);
+            background: rgba(76,175,80,0.05);
+        }
+        .result.error {
+            color: #f44336;
+            border-color: rgba(244,67,54,0.3);
+            background: rgba(244,67,54,0.05);
+        }
+
+        /* Lamport badge */
+        .lamport-badge {
+            display: inline-block;
+            background: rgba(0,212,255,0.15);
+            color: #00d4ff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        /* Auto-increment toggle */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #555;
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+        .toggle-slider:before {
+            content: "";
+            position: absolute;
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+        .toggle input:checked + .toggle-slider {
+            background: #00d4ff;
+        }
+        .toggle input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HIT2 — Concurrencia y Exclusión Mutua</h1>
+        <p class="subtitle">Reloj de Lamport · Worker Pool · Priority Queue</p>
+
+        <!-- Status Panel -->
+        <div class="status-panel">
+            <div class="status-item">
+                <div class="label">Tareas en Cola</div>
+                <div class="value" id="queueSize">—</div>
+            </div>
+            <div class="status-item">
+                <div class="label">Max Workers</div>
+                <div class="value" id="maxWorkers">—</div>
+            </div>
+            <div class="status-item">
+                <div class="label">Lamport (cliente)</div>
+                <div class="value"><span class="lamport-badge" id="clientLamport">0</span></div>
+            </div>
+            <button id="refreshStatus" class="btn-secondary" style="width: auto;">⟳ Refresh Status</button>
+        </div>
+
+        <!-- Task Form -->
+        <div class="card">
+            <h2>Ejecutar Tarea</h2>
+
+            <div class="form-group">
+                <label for="operacion">Operación:</label>
+                <select id="operacion">
+                    <option value="sumar">Sumar (+)</option>
+                    <option value="multiplicar">Multiplicar (×)</option>
+                </select>
+            </div>
+
+            <div class="row">
+                <div class="form-group">
+                    <label for="numA">Número A:</label>
+                    <input type="number" id="numA" value="10" placeholder="Ej: 10">
+                </div>
+                <div class="form-group">
+                    <label for="numB">Número B:</label>
+                    <input type="number" id="numB" value="20" placeholder="Ej: 20">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="imagenDocker">Imagen Docker:</label>
+                <input type="text" id="imagenDocker" value="ulisescasal/task-service:1.0.0" placeholder="ulisescasal/task-service:1.0.0">
+            </div>
+
+            <div class="form-group">
+                <div class="toggle-container">
+                    <label class="toggle">
+                        <input type="checkbox" id="autoLamport" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span>Auto-incrementar Lamport Timestamp</span>
+                </div>
+                <p class="hint">Si está activado, el timestamp se incrementa automáticamente con cada envío.</p>
+            </div>
+
+            <div class="form-group">
+                <label for="lamportTimestamp">Lamport Timestamp:</label>
+                <input type="number" id="lamportTimestamp" value="1" min="0" placeholder="Timestamp lógico de Lamport">
+                <p class="hint">Timestamp lógico para ordenamiento en la cola de prioridad.</p>
+            </div>
+
+            <button id="sendRequestBtn" class="btn">Enviar Tarea al Pool</button>
+
+            <div id="result" class="loading">Configurá los parámetros y enviá la tarea al worker pool.</div>
+        </div>
+    </div>
+
+    <script>
+        // Estado del cliente
+        let lamportCounter = 1;
+
+        // Elementos
+        const resultDiv = document.getElementById('result');
+        const btn = document.getElementById('sendRequestBtn');
+        const autoLamport = document.getElementById('autoLamport');
+        const lamportInput = document.getElementById('lamportTimestamp');
+        const clientLamportBadge = document.getElementById('clientLamport');
+
+        // Actualizar badge de Lamport
+        function updateLamportBadge() {
+            clientLamportBadge.textContent = lamportCounter;
+        }
+
+        // Refresh status
+        document.getElementById('refreshStatus').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/hit2/status');
+                const data = await response.json();
+                const queueEl = document.getElementById('queueSize');
+                const workersEl = document.getElementById('maxWorkers');
+
+                queueEl.textContent = data.tareasEnCola;
+                workersEl.textContent = data.maxWorkers;
+
+                queueEl.className = 'value' +
+                    (data.tareasEnCola > 10 ? ' danger' : data.tareasEnCola > 5 ? ' warning' : '');
+            } catch (error) {
+                document.getElementById('queueSize').textContent = 'ERR';
+                document.getElementById('maxWorkers').textContent = 'ERR';
+            }
+        });
+
+        // Auto-increment toggle
+        autoLamport.addEventListener('change', () => {
+            lamportInput.disabled = autoLamport.checked;
+            if (autoLamport.checked) {
+                lamportInput.value = lamportCounter;
+            }
+        });
+        lamportInput.disabled = true; // Inicia deshabilitado (auto mode)
+
+        // Enviar tarea
+        btn.addEventListener('click', async () => {
+            const operacion = document.getElementById('operacion').value;
+            const numA = parseFloat(document.getElementById('numA').value);
+            const numB = parseFloat(document.getElementById('numB').value);
+            const imagenDocker = document.getElementById('imagenDocker').value.trim();
+            const lamportTs = parseInt(lamportInput.value) || 0;
+
+            if (isNaN(numA) || isNaN(numB)) {
+                resultDiv.innerHTML = `<span style="color:#f44336">Error: Ingresá dos números válidos.</span>`;
+                resultDiv.className = 'result error';
+                return;
+            }
+
+            if (!imagenDocker) {
+                resultDiv.innerHTML = `<span style="color:#f44336">Error: La imagen Docker es obligatoria.</span>`;
+                resultDiv.className = 'result error';
+                return;
+            }
+
+            btn.disabled = true;
+            resultDiv.innerHTML = '⏳ Encolando tarea en el worker pool... (Lamport: ' + lamportTs + ')';
+            resultDiv.className = 'result loading';
+
+            try {
+                const response = await fetch('/api/hit2/getRemoteTask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        calculo: operacion,
+                        parametros: { a: numA, b: numB },
+                        datosAdicionales: { traceId: "hit2-frontend-" + Date.now() },
+                        imagenDocker: imagenDocker,
+                        lamportTimestamp: lamportTs
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || `Error HTTP: ${response.status}`);
+                }
+
+                // Mostrar resultado formateado
+                resultDiv.innerHTML =
+                    `✅ <strong>Tarea Completada</strong>\n\n` +
+                    `  Status:        ${data.status}\n` +
+                    `  Resultado:     ${JSON.stringify(data.resultado)}\n` +
+                    `  Mensaje:       ${data.mensaje}\n` +
+                    `  Container ID:  ${data.containerId || 'N/A'}\n` +
+                    `  Duración:      ${data.duracionMs}ms\n` +
+                    `  Lamport (srv): ${data.lamportTimestamp}\n` +
+                    `  Posición Cola: ${data.posicionEnCola}`;
+
+                resultDiv.className = 'result success';
+
+                // Auto-incrementar Lamport
+                if (autoLamport.checked) {
+                    lamportCounter++;
+                    lamportInput.value = lamportCounter;
+                    updateLamportBadge();
+                }
+
+                // Refresh status después de la tarea
+                document.getElementById('refreshStatus').click();
+
+            } catch (error) {
+                resultDiv.innerHTML = `❌ <strong>Error:</strong> ${error.message}`;
+                resultDiv.className = 'result error';
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // Cargar status inicial
+        document.getElementById('refreshStatus').click();
+        updateLamportBadge();
+    </script>
+</body>
+</html>

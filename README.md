@@ -1,21 +1,22 @@
-# TP2 - HIT #1 | Sistemas Distribuidos y Programación Paralela
+# TP2 — Sistemas Distribuidos y Programación Paralela
 
-## Cómo ejecutar
+## HITs Disponibles
 
-### Requisitos
+| HIT | Descripción | Frontend | Backend |
+|-----|-------------|----------|---------|
+| **HIT1** | Tarea remota secuencial | `:3000` | `/api/hit1/getRemoteTask` |
+| **HIT2** | Concurrencia + Lamport Clock + Worker Pool | `:3001` | `/api/hit2/getRemoteTask` |
 
-- Docker Desktop o Daemon  corriendo
+---
 
-### 1. Traer las imágenes
+## HIT1 — Tarea Remota Secuencial
+
+### Ejecución con Docker
 
 ```bash
 docker pull ulisescasal/orchestrator-server:1.0.0
 docker pull ulisescasal/frontend-client:1.0.0
-```
 
-### 2. Levantar el Orquestador
-
-```bash
 docker rm -f orchestrator-server 2>/dev/null || true
 docker run -d \
   --name orchestrator-server \
@@ -24,11 +25,7 @@ docker run -d \
   --add-host=host.docker.internal:host-gateway \
   -v /var/run/docker.sock:/var/run/docker.sock \
   ulisescasal/orchestrator-server:1.0.0
-```
 
-### 3. Levantar el Frontend
-
-```bash
 docker rm -f frontend-client 2>/dev/null || true
 docker run -d \
   --name frontend-client \
@@ -38,13 +35,9 @@ docker run -d \
   ulisescasal/frontend-client:1.0.0
 ```
 
-### 4. Abrir el navegador
+**Abrir:** http://localhost:3000
 
-**http://localhost:3000**
-
----
-
-## Probar con curl
+### Probar con curl
 
 ```bash
 curl -X POST http://localhost:8080/api/hit1/getRemoteTask \
@@ -57,55 +50,108 @@ curl -X POST http://localhost:8080/api/hit1/getRemoteTask \
   }'
 ```
 
-**Respuesta esperada:**
+---
 
-```json
-{
-  "status": "OK",
-  "resultado": 30,
-  "mensaje": "Tarea ejecutada correctamente",
-  "containerId": "...",
-  "duracionMs": 5014
-}
+## HIT2 — Concurrencia, Exclusión Mutua y Reloj de Lamport
+
+### Ejecución con Docker
+
+```bash
+# Construir imágenes si no existen
+docker build -t ulisescasal/orchestrator-server:latest ./sdypp
+docker build -t ulisescasal/frontend-hit2:latest ./frontend/HIT2
+
+# Levantar orchestrator
+docker rm -f orchestrator-server 2>/dev/null || true
+docker run -d \
+  --name orchestrator-server \
+  -p 8080:8080 \
+  -e TASK_SERVICE_HOST=host.docker.internal \
+  -e HIT2_WORKERS_MAX=4 \
+  --add-host=host.docker.internal:host-gateway \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ulisescasal/orchestrator-server:latest
+
+# Levantar frontend HIT2
+docker rm -f frontend-hit2 2>/dev/null || true
+docker run -d \
+  --name frontend-hit2 \
+  -p 3001:3001 \
+  -e BACKEND_URL=http://host.docker.internal:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  ulisescasal/frontend-hit2:latest
 ```
+
+**Abrir:** http://localhost:3001
+
+### Probar con curl
+
+```bash
+# Enviar tarea HIT2
+curl -X POST http://localhost:8080/api/hit2/getRemoteTask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "calculo":"sumar",
+    "parametros":{"a":10,"b":20},
+    "datosAdicionales":{"traceId":"hit2-001"},
+    "imagenDocker":"ulisescasal/task-service:1.0.0",
+    "lamportTimestamp":1
+  }'
+
+# Ver status del worker pool
+curl http://localhost:8080/api/hit2/status
+```
+
+### Ejecución local (sin Docker)
+
+```bash
+# Terminal 1: Orchestrator
+cd sdypp
+HIT2_WORKERS_MAX=4 ./mvnw spring-boot:run
+
+# Terminal 2: Frontend HIT2
+cd frontend/HIT2
+npm install
+npm start
+```
+
+### Documentación completa
+
+Ver [`frontend/HIT2/README.md`](frontend/HIT2/README.md) para la guía detallada de HIT2.
 
 ---
 
 ## Detener todo
 
 ```bash
-docker rm -f orchestrator-server frontend-client
+docker rm -f orchestrator-server frontend-client frontend-hit2
 ```
 
 ---
 
-## Arquitectura
+## Arquitectura HIT2
 
 ```
-┌─────────────┐     POST /api/hit1/getRemoteTask     ┌─────────────────┐
+┌─────────────┐     POST /api/hit2/getRemoteTask     ┌─────────────────┐
 │  Frontend   │ ────────────────────────────────────► │  Orquestador    │
-│  (:3000)    │                                       │  (:8080)        │
-│             │ ◄──────────────────────────────────── │                 │
-└─────────────┘        JSON con resultado             └────────┬────────┘
-                                                              │
-                                              ┌───────────────┼───────────────┐
-                                              │ docker pull   │ docker run -d -P
-                                              │               │ docker port
-                                              │               │ POST /ejecutar
-                                              │               │ docker stop + rm
-                                              ▼               ▼
-                                       ┌─────────────────────────┐
-                                       │   Task Service (Docker) │
-                                       │   (Puerto dinámico)     │
-                                       └─────────────────────────┘
+│  HIT2       │                                       │  (:8080)        │
+│  (:3001)    │ ◄──────────────────────────────────── │                 │
+│             │   JSON + lamportTimestamp             │  LamportClock   │
+└─────────────┘                                       │  WorkerPool(N)  │
+                                                      │  PriorityQ      │
+                                                      └────────┬────────┘
+                                                               │
+                                               ┌───────────────┼───────────────┐
+                                               │ docker pull   │ docker run -d -P
+                                               │               │ docker port
+                                               │               │ POST /ejecutar
+                                               │               │ docker stop + rm
+                                               ▼               ▼
+                                        ┌─────────────────────────┐
+                                        │   Task Service (Docker) │
+                                        │   (Puerto dinámico)     │
+                                        └─────────────────────────┘
 ```
-
-1. El usuario ingresa operación y números en el **frontend**
-2. El frontend envía el request al **orquestador** (Spring Boot)
-3. El orquestador hace `docker pull` + `docker run -d -P` del **task service**
-4. Obtiene el puerto mapeado con `docker port`
-5. Invoca `POST /ejecutar` en el task service
-6. Devuelve el resultado y limpia el contenedor
 
 ---
 
@@ -118,6 +164,7 @@ docker ps
 # Ver logs
 docker logs -f orchestrator-server
 docker logs -f frontend-client
+docker logs -f frontend-hit2
 ```
 
 ## Troubleshooting
@@ -125,6 +172,7 @@ docker logs -f frontend-client
 | Problema | Solución |
 |----------|----------|
 | `pull access denied` | `docker login` |
-| Nombre en uso | `docker rm -f orchestrator-server frontend-client` |
+| Nombre en uso | `docker rm -f orchestrator-server frontend-client frontend-hit2` |
 | Puerto ocupado | `docker ps` y liberar el contenedor |
 | `Failed to fetch` | Verificá que el orquestador esté corriendo (`docker ps`) |
+| Contenedores no se crean | Verificá que Docker Desktop/Daemon esté corriendo |
