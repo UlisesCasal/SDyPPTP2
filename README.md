@@ -56,6 +56,8 @@ curl -X POST http://localhost:8080/api/hit1/getRemoteTask \
 
 ### Ejecución con Docker
 
+#### Un solo cliente
+
 ```bash
 # Construir imágenes si no existen
 docker build -t ulisescasal/orchestrator-server:latest ./sdypp
@@ -72,7 +74,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   ulisescasal/orchestrator-server:latest
 
-# Levantar frontend HIT2
+# Levantar frontend HIT2 (1 cliente)
 docker rm -f frontend-hit2 2>/dev/null || true
 docker run -d \
   --name frontend-hit2 \
@@ -83,6 +85,43 @@ docker run -d \
 ```
 
 **Abrir:** http://localhost:3001
+
+#### Múltiples clientes (5 simultáneos)
+
+Para probar concurrencia real y ver cómo el reloj de Lamport ordena tareas de distintos clientes:
+
+```bash
+# Levantar orchestrator (si no está corriendo)
+docker rm -f orchestrator-server 2>/dev/null || true
+docker run -d \
+  --name orchestrator-server \
+  -p 8080:8080 \
+  -e TASK_SERVICE_HOST=host.docker.internal \
+  -e HIT2_WORKERS_MAX=2 \
+  --add-host=host.docker.internal:host-gateway \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ulisescasal/orchestrator-server:latest
+
+# Levantar 5 frontends HIT2 en un solo contenedor
+docker rm -f frontend-hit2 2>/dev/null || true
+docker run -d \
+  --name frontend-hit2 \
+  -p 3011:3011 -p 3012:3012 -p 3013:3013 -p 3014:3014 -p 3015:3015 \
+  -e MULTI_CLIENT=true \
+  -e BACKEND_URL=http://host.docker.internal:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  ulisescasal/frontend-hit2:latest
+```
+
+**Abrir:** http://localhost:3011, http://localhost:3012, http://localhost:3013, http://localhost:3014, http://localhost:3015
+
+Cada puerto es un cliente independiente con su propio reloj de Lamport. Abrí varias pestañas y enviá tareas simultáneas para observar:
+
+- Cómo cada cliente incrementa su Lamport local
+- Cómo el orchestrator ordena las tareas por timestamp en la `PriorityBlockingQueue`
+- Cómo el reloj de cada cliente se sincroniza al recibir la respuesta del servidor (`max(local, server) + 1`)
+
+> **Tip:** Usá `HIT2_WORKERS_MAX=2` con 5 clientes para forzar que las tareas se encolen y veas el ordenamiento por Lamport en acción.
 
 ### Probar con curl
 

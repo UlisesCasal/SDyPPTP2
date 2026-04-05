@@ -179,20 +179,20 @@
             white-space: pre-wrap;
             word-break: break-all;
         }
-        .result.loading {
+        #result.loading {
             color: #888;
             font-style: italic;
             border-color: rgba(255,255,255,0.1);
         }
-        .result.success {
+        #result.success {
             color: #4caf50;
-            border-color: rgba(76,175,80,0.3);
-            background: rgba(76,175,80,0.05);
+            border-color: rgba(76,175,80,0.5);
+            background: rgba(76,175,80,0.1);
         }
-        .result.error {
+        #result.error {
             color: #f44336;
-            border-color: rgba(244,67,54,0.3);
-            background: rgba(244,67,54,0.05);
+            border-color: rgba(244,67,54,0.5);
+            background: rgba(244,67,54,0.1);
         }
 
         /* Lamport badge */
@@ -248,6 +248,55 @@
         .toggle input:checked + .toggle-slider:before {
             transform: translateX(20px);
         }
+
+        /* Pool controls */
+        .pool-controls {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        .pool-controls .form-group {
+            flex: 0 0 120px;
+            margin-bottom: 0;
+        }
+        .pool-controls .btn-group {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+        }
+        .btn-pool {
+            background: linear-gradient(135deg, #9c27b0, #6a1b9a);
+        }
+        .btn-pool:hover:not(:disabled) {
+            background: linear-gradient(135deg, #ab47bc, #7b1fa2);
+        }
+
+        /* Task log */
+        .task-log {
+            margin-top: 20px;
+            max-height: 350px;
+            overflow-y: auto;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.1);
+            font-family: 'Courier New', monospace;
+            font-size: 0.82em;
+        }
+        .task-log .log-entry {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+        }
+        .task-log .log-entry:last-child { border-bottom: none; }
+        .task-log .log-time { color: #555; white-space: nowrap; }
+        .task-log .log-pending { color: #ff9800; }
+        .task-log .log-completed { color: #4caf50; }
+        .task-log .log-error { color: #f44336; }
+        .task-log .log-info { color: #888; }
+        .task-log .log-lamport { color: #00d4ff; }
+        .task-log .log-result { color: #4ec9b0; }
     </style>
 </head>
 <body>
@@ -317,57 +366,192 @@
                 <p class="hint">Timestamp lógico para ordenamiento en la cola de prioridad.</p>
             </div>
 
-            <button id="sendRequestBtn" class="btn">Enviar Tarea al Pool</button>
+            <div class="form-group">
+                <label>Acciones:</label>
+                <div class="pool-controls">
+                    <div class="form-group">
+                        <label for="poolSize">Pool size:</label>
+                        <input type="number" id="poolSize" value="5" min="1" max="20">
+                    </div>
+                    <div class="btn-group">
+                        <button id="sendRequestBtn" class="btn">Enviar 1 Tarea</button>
+                        <button id="sendPoolBtn" class="btn btn-pool">Enviar Pool</button>
+                    </div>
+                </div>
+            </div>
 
-            <div id="result" class="loading">Configurá los parámetros y enviá la tarea al worker pool.</div>
+            <div id="result">Configurá los parámetros y enviá la tarea al worker pool.</div>
+        </div>
+
+        <!-- Task Log -->
+        <div class="card">
+            <h2>Log de Tareas <span style="font-size:0.7em; color:#888; font-weight:normal;">(tiempo real)</span></h2>
+            <div class="task-log" id="taskLog">
+                <div class="log-entry"><span class="log-info">Esperando tareas...</span></div>
+            </div>
         </div>
     </div>
 
     <script>
-        // Estado del cliente
+        // =============================================
+        // ESTADO DEL CLIENTE
+        // =============================================
         let lamportCounter = 1;
+        let taskLogCount = 0;
 
         // Elementos
         const resultDiv = document.getElementById('result');
         const btn = document.getElementById('sendRequestBtn');
+        const poolBtn = document.getElementById('sendPoolBtn');
         const autoLamport = document.getElementById('autoLamport');
         const lamportInput = document.getElementById('lamportTimestamp');
         const clientLamportBadge = document.getElementById('clientLamport');
+        const taskLog = document.getElementById('taskLog');
 
-        // Actualizar badge de Lamport
+        // =============================================
+        // LAMPORT
+        // =============================================
         function updateLamportBadge() {
             clientLamportBadge.textContent = lamportCounter;
         }
 
-        // Refresh status
-        document.getElementById('refreshStatus').addEventListener('click', async () => {
+        function tickLamport() {
+            lamportCounter++;
+            lamportInput.value = lamportCounter;
+            updateLamportBadge();
+            return lamportCounter;
+        }
+
+        function receiveLamport(serverTs) {
+            lamportCounter = Math.max(lamportCounter, serverTs) + 1;
+            lamportInput.value = lamportCounter;
+            updateLamportBadge();
+            return lamportCounter;
+        }
+
+        // =============================================
+        // TASK LOG
+        // =============================================
+        function addLogEntry(html, type = 'info') {
+            if (taskLogCount === 0) taskLog.innerHTML = '';
+            taskLogCount++;
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${html}</span>`;
+            taskLog.prepend(entry);
+        }
+
+        // =============================================
+        // STATUS (polling automático cada 2s)
+        // =============================================
+        async function pollStatus() {
             try {
                 const response = await fetch('/api/hit2/status');
-                const data = await response.json();
-                const queueEl = document.getElementById('queueSize');
-                const workersEl = document.getElementById('maxWorkers');
+                if (response.ok) {
+                    const data = await response.json();
+                    const queueEl = document.getElementById('queueSize');
+                    const workersEl = document.getElementById('maxWorkers');
 
-                queueEl.textContent = data.tareasEnCola;
-                workersEl.textContent = data.maxWorkers;
+                    queueEl.textContent = data.tareasEnCola;
+                    workersEl.textContent = data.maxWorkers;
 
-                queueEl.className = 'value' +
-                    (data.tareasEnCola > 10 ? ' danger' : data.tareasEnCola > 5 ? ' warning' : '');
-            } catch (error) {
-                document.getElementById('queueSize').textContent = 'ERR';
-                document.getElementById('maxWorkers').textContent = 'ERR';
+                    queueEl.className = 'value' +
+                        (data.tareasEnCola > 10 ? ' danger' : data.tareasEnCola > 5 ? ' warning' : '');
+                }
+            } catch (e) {
+                // Silencioso
             }
+        }
+
+        // Poll cada 2 segundos
+        setInterval(pollStatus, 2000);
+
+        // Refresh manual también
+        document.getElementById('refreshStatus').addEventListener('click', async () => {
+            await pollStatus();
         });
 
-        // Auto-increment toggle
+        // =============================================
+        // AUTO-INCREMENT TOGGLE
+        // =============================================
         autoLamport.addEventListener('change', () => {
             lamportInput.disabled = autoLamport.checked;
             if (autoLamport.checked) {
                 lamportInput.value = lamportCounter;
             }
         });
-        lamportInput.disabled = true; // Inicia deshabilitado (auto mode)
+        lamportInput.disabled = true;
 
-        // Enviar tarea
+        // =============================================
+        // FETCH CON TIMEOUT
+        // =============================================
+        async function fetchWithTimeout(url, options, timeoutMs = 180000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    signal: controller.signal
+                });
+                return response;
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        // =============================================
+        // ENVIAR UNA TAREA
+        // =============================================
+        function buildRequestBody(operacion, numA, numB, imagenDocker, lamportTs) {
+            return {
+                calculo: operacion,
+                parametros: { a: numA, b: numB },
+                datosAdicionales: { traceId: "hit2-frontend-" + Date.now() },
+                imagenDocker: imagenDocker,
+                lamportTimestamp: lamportTs
+            };
+        }
+
+        async function sendHit2Task(numA, numB, operacion, imagenDocker, lamportTs, taskId) {
+            const label = taskId ? `#${taskId}` : 'Tarea';
+
+            addLogEntry(`Enviada → ${operacion}(${numA}, ${numB}) <span class="log-lamport">[Lamport: ${lamportTs}]</span>`, 'pending');
+
+            try {
+                const response = await fetchWithTimeout('/api/hit2/getRemoteTask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(buildRequestBody(operacion, numA, numB, imagenDocker, lamportTs))
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || data.error || `HTTP ${response.status}`);
+                }
+
+                // Actualizar Lamport del cliente con el del servidor
+                if (data.lamportTimestamp) {
+                    receiveLamport(data.lamportTimestamp);
+                }
+
+                addLogEntry(
+                    `✅ ${label} OK → <span class="log-result">${data.resultado}</span> | Lamport srv: ${data.lamportTimestamp} | Cola: #${data.posicionEnCola} | ${data.duracionMs}ms | Container: ${data.containerId || 'N/A'}`,
+                    'completed'
+                );
+
+                return data;
+            } catch (error) {
+                addLogEntry(`❌ ${label} FALLÓ → ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        // =============================================
+        // BOTÓN: ENVIAR 1 TAREA
+        // =============================================
         btn.addEventListener('click', async () => {
             const operacion = document.getElementById('operacion').value;
             const numA = parseFloat(document.getElementById('numA').value);
@@ -380,7 +564,6 @@
                 resultDiv.className = 'result error';
                 return;
             }
-
             if (!imagenDocker) {
                 resultDiv.innerHTML = `<span style="color:#f44336">Error: La imagen Docker es obligatoria.</span>`;
                 resultDiv.className = 'result error';
@@ -388,50 +571,29 @@
             }
 
             btn.disabled = true;
-            resultDiv.innerHTML = '⏳ Encolando tarea en el worker pool... (Lamport: ' + lamportTs + ')';
+            resultDiv.innerHTML = `⏳ Encolando tarea... (Lamport: ${lamportTs})`;
             resultDiv.className = 'result loading';
 
             try {
-                const response = await fetch('/api/hit2/getRemoteTask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        calculo: operacion,
-                        parametros: { a: numA, b: numB },
-                        datosAdicionales: { traceId: "hit2-frontend-" + Date.now() },
-                        imagenDocker: imagenDocker,
-                        lamportTimestamp: lamportTs
-                    })
-                });
+                const data = await sendHit2Task(numA, numB, operacion, imagenDocker, lamportTs);
 
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.message || `Error HTTP: ${response.status}`);
+                if (data) {
+                    resultDiv.innerHTML =
+                        `✅ <strong>Tarea Completada</strong>\n\n` +
+                        `  Status:        ${data.status}\n` +
+                        `  Resultado:     ${JSON.stringify(data.resultado)}\n` +
+                        `  Mensaje:       ${data.mensaje}\n` +
+                        `  Container ID:  ${data.containerId || 'N/A'}\n` +
+                        `  Duración:      ${data.duracionMs}ms\n` +
+                        `  Lamport (srv): ${data.lamportTimestamp}\n` +
+                        `  Posición Cola: ${data.posicionEnCola}`;
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.innerHTML = `❌ <strong>Error:</strong> La tarea falló. Ver el log.`;
+                    resultDiv.className = 'result error';
                 }
 
-                // Mostrar resultado formateado
-                resultDiv.innerHTML =
-                    `✅ <strong>Tarea Completada</strong>\n\n` +
-                    `  Status:        ${data.status}\n` +
-                    `  Resultado:     ${JSON.stringify(data.resultado)}\n` +
-                    `  Mensaje:       ${data.mensaje}\n` +
-                    `  Container ID:  ${data.containerId || 'N/A'}\n` +
-                    `  Duración:      ${data.duracionMs}ms\n` +
-                    `  Lamport (srv): ${data.lamportTimestamp}\n` +
-                    `  Posición Cola: ${data.posicionEnCola}`;
-
-                resultDiv.className = 'result success';
-
-                // Auto-incrementar Lamport
-                if (autoLamport.checked) {
-                    lamportCounter++;
-                    lamportInput.value = lamportCounter;
-                    updateLamportBadge();
-                }
-
-                // Refresh status después de la tarea
-                document.getElementById('refreshStatus').click();
+                if (autoLamport.checked) tickLamport();
 
             } catch (error) {
                 resultDiv.innerHTML = `❌ <strong>Error:</strong> ${error.message}`;
@@ -441,8 +603,62 @@
             }
         });
 
-        // Cargar status inicial
-        document.getElementById('refreshStatus').click();
+        // =============================================
+        // BOTÓN: ENVIAR POOL
+        // =============================================
+        poolBtn.addEventListener('click', async () => {
+            const operacion = document.getElementById('operacion').value;
+            const numA = parseFloat(document.getElementById('numA').value);
+            const numB = parseFloat(document.getElementById('numB').value);
+            const imagenDocker = document.getElementById('imagenDocker').value.trim();
+            const poolSize = parseInt(document.getElementById('poolSize').value) || 5;
+
+            if (isNaN(numA) || isNaN(numB)) {
+                resultDiv.innerHTML = `<span style="color:#f44336">Error: Ingresá dos números válidos.</span>`;
+                resultDiv.className = 'result error';
+                return;
+            }
+            if (!imagenDocker) {
+                resultDiv.innerHTML = `<span style="color:#f44336">Error: La imagen Docker es obligatoria.</span>`;
+                resultDiv.className = 'result error';
+                return;
+            }
+
+            poolBtn.disabled = true;
+            btn.disabled = true;
+            resultDiv.innerHTML = `🚀 Enviando POOL de ${poolSize} tareas concurrentes...`;
+            resultDiv.className = 'result loading';
+
+            addLogEntry(`🚀 <strong>POOL de ${poolSize} tareas</strong> → ${operacion}(${numA}, ${numB})`, 'pending');
+
+            const promises = [];
+            for (let i = 1; i <= poolSize; i++) {
+                // Cada tarea incrementa su propio Lamport
+                const ts = autoLamport.checked ? tickLamport() : (parseInt(lamportInput.value) || i);
+                promises.push(sendHit2Task(numA, numB, operacion, imagenDocker, ts, i));
+            }
+
+            const results = await Promise.all(promises);
+            const successCount = results.filter(r => r !== null).length;
+
+            addLogEntry(`✅ Pool finalizado: <span class="log-result">${successCount}/${poolSize}</span> exitosas`, 'completed');
+
+            resultDiv.innerHTML =
+                `🚀 <strong>Pool Completado</strong>\n\n` +
+                `  Tareas enviadas:  ${poolSize}\n` +
+                `  Exitosas:         ${successCount}\n` +
+                `  Fallidas:         ${poolSize - successCount}\n` +
+                `  Lamport final:    ${lamportCounter}`;
+            resultDiv.className = 'result success';
+
+            poolBtn.disabled = false;
+            btn.disabled = false;
+        });
+
+        // =============================================
+        // INIT
+        // =============================================
+        pollStatus();
         updateLamportBadge();
     </script>
 </body>

@@ -97,6 +97,8 @@ docker run -d \
 
 ### 3. Levantar el Frontend HIT2
 
+#### Un solo cliente
+
 ```bash
 docker rm -f frontend-hit2 2>/dev/null || true
 docker run -d \
@@ -107,12 +109,35 @@ docker run -d \
   ulisescasal/frontend-hit2:latest
 ```
 
+#### Múltiples clientes (5 simultáneos)
+
+Para probar concurrencia real y ver cómo el reloj de Lamport ordena tareas de distintos clientes, podés levantar 5 instancias del frontend en el mismo contenedor:
+
+```bash
+docker rm -f frontend-hit2 2>/dev/null || true
+docker run -d \
+  --name frontend-hit2 \
+  -p 3011:3011 -p 3012:3012 -p 3013:3013 -p 3014:3014 -p 3015:3015 \
+  -e MULTI_CLIENT=true \
+  -e BACKEND_URL=http://host.docker.internal:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  ulisescasal/frontend-hit2:latest
+```
+
+Esto levanta 5 frontends independientes en los puertos **3011, 3012, 3013, 3014 y 3015**. Cada uno tiene su propio reloj de Lamport, por lo que podés:
+
+1. Abrir 5 pestañas del navegador (una por puerto)
+2. Enviar tareas simultáneas desde cada cliente
+3. Observar cómo el orchestrator las ordena por Lamport timestamp en la `PriorityBlockingQueue`
+4. Ver en el log de cada cliente cómo su reloj se sincroniza con el del servidor
+
 **Variables de entorno del frontend:**
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `BACKEND_URL` | `http://host.docker.internal:8080` | URL del orchestrator |
 | `PORT` | `3001` | Puerto del frontend |
+| `MULTI_CLIENT` | `false` | Si es `true`, levanta 5 instancias (3011-3015) |
 
 ### 4. Abrir el navegador
 
