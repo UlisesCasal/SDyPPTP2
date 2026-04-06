@@ -6,6 +6,7 @@
 |-----|-------------|----------|---------|
 | **HIT1** | Tarea remota secuencial | `:3000` | `/api/hit1/getRemoteTask` |
 | **HIT2** | Concurrencia + Lamport Clock + Worker Pool | `:3001` | `/api/hit2/getRemoteTask` |
+| **HIT3** | Clúster con balanceador + elección de líder (Bully) | Cliente HTTP (`curl`/Postman) | `/api/hit3/getRemoteTask` |
 
 ---
 
@@ -160,10 +161,70 @@ Ver [`frontend/HIT2/README.md`](frontend/HIT2/README.md) para la guía detallada
 
 ---
 
+## HIT3 — Clúster con Balanceador y Elección de Líder (Bully)
+
+### Ejecución completa de HIT3 (balanceador + cluster + elección Bully)
+
+Desde la raíz:
+
+```bash
+# 0) Descargar imagen del orquestador desde Docker Hub (opcional, recomendado)
+docker pull ulisescasal/orchestrator-server:1.0.0
+
+# 1) Levantar 3 nodos + nginx
+docker compose -f docker-compose.hit3.yml up -d
+
+# 2) Verificar que todos estén "healthy"
+docker ps
+
+# 3) Ver quién es el líder
+curl http://localhost:8090/internal/hit3/cluster/status | python3 -m json.tool
+
+# 4) Ejecutar tarea (va al balanceador, el líder la asigna)
+curl -X POST http://localhost:8090/api/hit3/getRemoteTask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "calculo":"sumar",
+    "parametros":{"a":10,"b":20},
+    "datosAdicionales":{"traceId":"hit3-demo"},
+    "imagenDocker":"ulisescasal/task-service:1.0.0"
+  }'
+
+# 5) Carga concurrente rápida
+for i in {1..20}; do
+  curl -s -X POST http://localhost:8090/api/hit3/getRemoteTask \
+    -H "Content-Type: application/json" \
+    -d "{\"calculo\":\"sumar\",\"parametros\":{\"a\":10,\"b\":20},\"datosAdicionales\":{\"traceId\":\"hit3-$i\"},\"imagenDocker\":\"ulisescasal/task-service:1.0.0\"}" &
+done
+wait
+
+# 6) Failover: matar líder y medir recuperación
+docker kill orchestrator-3
+t0=$(date +%s%3N)
+until curl -sf http://localhost:8090/internal/hit3/cluster/status | grep -q '"leaderId".*[12]'; do sleep 0.2; done
+t1=$(date +%s%3N)
+echo "Recovery time: $((t1 - t0)) ms"
+
+# 7) Script de pruebas automatizadas
+bash ./hit3_test_suite.sh --base-url http://localhost:8090 --image ulisescasal/task-service:1.0.0
+
+# 8) Apagar cluster
+docker compose -f docker-compose.hit3.yml down
+```
+
+### Guía completa HIT3
+
+Ver [`HIT3_README.md`](HIT3_README.md) para arquitectura, troubleshooting, métricas de recuperación y diagrama de secuencia.
+
+---
+
 ## Detener todo
 
 ```bash
 docker rm -f orchestrator-server frontend-client frontend-hit2
+
+# Si levantaste HIT3
+docker compose -f docker-compose.hit3.yml down
 ```
 
 ---

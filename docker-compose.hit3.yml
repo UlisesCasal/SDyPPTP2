@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+  orchestrator-1:
+    image: ulisescasal/orchestrator-server:1.0.0
+    container_name: orchestrator-1
+    environment:
+      HIT3_CLUSTER_ENABLED: "true"
+      HIT3_CLUSTER_NODE_ID: "1"
+      HIT3_CLUSTER_SELF_HOST: "orchestrator-1"
+      HIT3_CLUSTER_SELF_PORT: "8080"
+      HIT3_CLUSTER_NODES: "1:orchestrator-1:8080,2:orchestrator-2:8080,3:orchestrator-3:8080"
+      HIT3_CLUSTER_HEARTBEAT_INTERVAL_MS: "1000"
+      HIT3_CLUSTER_HEARTBEAT_TIMEOUT_MS: "3000"
+      HIT3_CLUSTER_ELECTION_TIMEOUT_MS: "2500"
+      TASK_SERVICE_HOST: "host.docker.internal"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [cluster-net]
+
+  orchestrator-2:
+    image: ulisescasal/orchestrator-server:1.0.0
+    container_name: orchestrator-2
+    environment:
+      HIT3_CLUSTER_ENABLED: "true"
+      HIT3_CLUSTER_NODE_ID: "2"
+      HIT3_CLUSTER_SELF_HOST: "orchestrator-2"
+      HIT3_CLUSTER_SELF_PORT: "8080"
+      HIT3_CLUSTER_NODES: "1:orchestrator-1:8080,2:orchestrator-2:8080,3:orchestrator-3:8080"
+      HIT3_CLUSTER_HEARTBEAT_INTERVAL_MS: "1000"
+      HIT3_CLUSTER_HEARTBEAT_TIMEOUT_MS: "3000"
+      HIT3_CLUSTER_ELECTION_TIMEOUT_MS: "2500"
+      TASK_SERVICE_HOST: "host.docker.internal"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [cluster-net]
+
+  orchestrator-3:
+    image: ulisescasal/orchestrator-server:1.0.0
+    container_name: orchestrator-3
+    environment:
+      HIT3_CLUSTER_ENABLED: "true"
+      HIT3_CLUSTER_NODE_ID: "3"
+      HIT3_CLUSTER_SELF_HOST: "orchestrator-3"
+      HIT3_CLUSTER_SELF_PORT: "8080"
+      HIT3_CLUSTER_NODES: "1:orchestrator-1:8080,2:orchestrator-2:8080,3:orchestrator-3:8080"
+      HIT3_CLUSTER_HEARTBEAT_INTERVAL_MS: "1000"
+      HIT3_CLUSTER_HEARTBEAT_TIMEOUT_MS: "3000"
+      HIT3_CLUSTER_ELECTION_TIMEOUT_MS: "2500"
+      TASK_SERVICE_HOST: "host.docker.internal"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [cluster-net]
+
+  lb:
+    image: nginx:1.27-alpine
+    container_name: orchestrator-lb
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./infra/nginx/nginx-hit3.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - orchestrator-1
+      - orchestrator-2
+      - orchestrator-3
+    networks: [cluster-net]
+
+networks:
+  cluster-net:
+    driver: bridge
