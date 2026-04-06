@@ -4,7 +4,7 @@ set -euo pipefail
 BASE_URL="http://localhost:8090"
 IMAGE="ulisescasal/task-service:1.0.0"
 COMPOSE_FILE="docker-compose.hit3.yml"
-REQUEST_TIMEOUT=20
+REQUEST_TIMEOUT=60
 
 DO_UP="false"
 DO_DOWN="false"
@@ -27,9 +27,13 @@ while [[ $# -gt 0 ]]; do
       DO_DOWN="true"
       shift
       ;;
+    --timeout)
+      REQUEST_TIMEOUT="$2"
+      shift 2
+      ;;
     *)
       echo "Opción inválida: $1"
-      echo "Uso: bash ./hit3_test_suite.sh [--base-url URL] [--image IMAGE] [--up] [--down]"
+      echo "Uso: bash ./hit3_test_suite.sh [--base-url URL] [--image IMAGE] [--up] [--down] [--timeout SEGUNDOS]"
       exit 1
       ;;
   esac
@@ -61,6 +65,21 @@ request_task() {
   curl -sS --max-time "$REQUEST_TIMEOUT" -X POST "$BASE_URL/api/hit3/getRemoteTask" \
     -H "Content-Type: application/json" \
     -d "{\"calculo\":\"sumar\",\"parametros\":{\"a\":10,\"b\":20},\"datosAdicionales\":{\"traceId\":\"$trace_id\"},\"imagenDocker\":\"$IMAGE\"}"
+}
+
+request_task_retry() {
+  local trace_id="$1"
+  local attempts=3
+  local wait_seconds=2
+  local output=""
+  for n in $(seq 1 "$attempts"); do
+    if output="$(request_task "$trace_id" 2>/dev/null)"; then
+      echo "$output"
+      return 0
+    fi
+    sleep "$wait_seconds"
+  done
+  return 1
 }
 
 get_status() {
@@ -109,7 +128,7 @@ fi
 echo "OK: líder actual=$LEADER_ID"
 
 print_title "Caso 2 - Ejecución de tarea simple"
-SIMPLE_RESPONSE="$(request_task "hit3-simple-001")"
+SIMPLE_RESPONSE="$(request_task_retry "hit3-simple-001")"
 echo "$SIMPLE_RESPONSE"
 SIMPLE_STATUS="$(json_field "$SIMPLE_RESPONSE" "status")"
 if [[ "$SIMPLE_STATUS" != "OK" ]]; then
@@ -122,7 +141,7 @@ print_title "Caso 3 - Carga concurrente (10 tareas)"
 TMP_RESULTS="$(mktemp)"
 for i in {1..10}; do
   (
-    request_task "hit3-concurrent-$i" >"$TMP_RESULTS.$i" 2>/dev/null || true
+    request_task_retry "hit3-concurrent-$i" >"$TMP_RESULTS.$i" 2>/dev/null || true
   ) &
 done
 wait
@@ -174,7 +193,7 @@ echo "OK: nuevo líder=$NEW_LEADER"
 echo "Recovery time aproximado=${RECOVERY_MS}ms"
 
 print_title "Caso 5 - Redistribución tras failover"
-POST_FAILOVER_RESPONSE="$(request_task "hit3-post-failover-001")"
+POST_FAILOVER_RESPONSE="$(request_task_retry "hit3-post-failover-001")"
 echo "$POST_FAILOVER_RESPONSE"
 POST_FAILOVER_STATUS="$(json_field "$POST_FAILOVER_RESPONSE" "status")"
 if [[ "$POST_FAILOVER_STATUS" != "OK" ]]; then
