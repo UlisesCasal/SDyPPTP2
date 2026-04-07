@@ -32,7 +32,7 @@ Todos los scripts de prueba se encuentran centralizados en la carpeta `Pruebas d
 El HIT1 implementa la ejecución de una tarea remota de forma secuencial. El Orquestador recibe una solicitud, descarga la imagen Docker necesaria, levanta un contenedor efímero, resuelve su puerto dinámico, ejecuta la tarea, devuelve el resultado y finalmente limpia el entorno (detiene y elimina el contenedor).
 
 ### Flujo de Ejecución HIT1
-![Flujo HIT1](HIT3/hit1_flujo.jpg)
+![Flujo HIT1](Graficos%20de%20Funcionamiento/hit1_flujo.jpg)
 
 ### Ejecución con Docker
 
@@ -74,7 +74,7 @@ Este HIT introduce concurrencia real mediante un **Worker Pool** de tamaño conf
 - **Worker Pool**: Un conjunto de hilos (workers) consumen tareas de la cola de forma concurrente, optimizando el uso de recursos y mejorando el throughput.
 
 ### Arquitectura y Flujo HIT2
-![Flujo HIT2](HIT3/hit2_flujo.jpg)
+![Flujo HIT2](Graficos%20de%20Funcionamiento/hit2_flujo.jpg)
 
 ### Ejecución con Docker
 
@@ -122,17 +122,17 @@ El HIT3 escala el sistema a un entorno de clúster con múltiples instancias del
 - **Tolerancia a Fallos**: Si cualquier nodo (incluyendo el líder) se cae, el sistema detecta la falla automáticamente y se reorganiza para seguir operando sin pérdida de servicio.
 
 ### Arquitectura del Clúster
-![Interacción Lógica HIT3](HIT3/hit3_interaccion_logica.jpg)
+![Interacción Lógica HIT3](Graficos%20de%20Funcionamiento/hit3_interaccion_logica.jpg)
 
 ### Escenarios de Funcionamiento
 
 #### 1. Flujo Normal
 Las peticiones llegan al balanceador, se redirigen a un nodo, este consulta al líder y el líder asigna la ejecución a un worker disponible.
-![Flujo Normal HIT3](HIT3/hit3_flujo_normal.jpg)
+![Flujo Normal HIT3](Graficos%20de%20Funcionamiento/hit3_flujo_normal.jpg)
 
 #### 2. Caída de Líder y Elección (Bully)
 Detección de timeout, envío de mensajes de elección y proclamación del nuevo coordinador.
-![Flujo Failover HIT3](HIT3/hit3_flujo_caida_lider_bully.jpg)
+![Flujo Failover HIT3](Graficos%20de%20Funcionamiento/hit3_flujo_caida_lider_bully.jpg)
 
 ### Ejecución (Recomendada con Script)
 La ejecución de HIT3 está totalmente automatizada para facilitar las pruebas de coordinación:
