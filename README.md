@@ -1,16 +1,38 @@
 # TP2 — Sistemas Distribuidos y Programación Paralela
 
-## HITs Disponibles
-
-| HIT | Descripción | Frontend | Backend |
-|-----|-------------|----------|---------|
-| **HIT1** | Tarea remota secuencial | `:3000` | `/api/hit1/getRemoteTask` |
-| **HIT2** | Concurrencia + Lamport Clock + Worker Pool | `:3001` | `/api/hit2/getRemoteTask` |
-| **HIT3** | Clúster con balanceador + elección de líder (Bully) | Cliente HTTP (`curl`/Postman) | `/api/hit3/getRemoteTask` |
+Este repositorio contiene la implementación del Trabajo Práctico 2 de la materia Sistemas Distribuidos y Programación Paralela. El proyecto se divide en tres niveles de complejidad (HITs) que abordan desde la ejecución remota básica hasta la coordinación de clústeres con tolerancia a fallos.
 
 ---
 
-## HIT1 — Tarea Remota Secuencial
+## 🚀 Guía Rápida de Ejecución
+
+### Requisitos Previos
+- **Docker Desktop** o **Docker Daemon** funcionando.
+- **Docker CLI** disponible en el PATH.
+- Puertos `8080`, `8090`, `3000`, `3001`, `3003` disponibles.
+
+### Scripts de Prueba Automatizados
+Todos los scripts de prueba se encuentran centralizados en la carpeta `Pruebas de HIT`.
+
+---
+
+## 🏗️ HITs Disponibles
+
+| HIT | Descripción | Frontend | Backend |
+|-----|-------------|----------|---------|
+| **HIT1** | Tarea remota secuencial básica | `:3000` | `/api/hit1/getRemoteTask` |
+| **HIT2** | Concurrencia + Lamport Clock + Worker Pool | `:3001` | `/api/hit2/getRemoteTask` |
+| **HIT3** | Clúster con balanceador + elección de líder (Bully) | `:3003` | `/api/hit3/getRemoteTask` |
+
+---
+
+## 1️⃣ HIT1 — Tarea Remota Secuencial
+
+### Descripción del Funcionamiento
+El HIT1 implementa la ejecución de una tarea remota de forma secuencial. El Orquestador recibe una solicitud, descarga la imagen Docker necesaria, levanta un contenedor efímero, resuelve su puerto dinámico, ejecuta la tarea, devuelve el resultado y finalmente limpia el entorno (detiene y elimina el contenedor).
+
+### Flujo de Ejecución HIT1
+![Flujo HIT1](HIT3/hit1_flujo.jpg)
 
 ### Ejecución con Docker
 
@@ -18,6 +40,7 @@
 docker pull ulisescasal/orchestrator-server:1.0.0
 docker pull ulisescasal/frontend-client:1.0.0
 
+# Levantar Orquestador
 docker rm -f orchestrator-server 2>/dev/null || true
 docker run -d \
   --name orchestrator-server \
@@ -27,6 +50,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   ulisescasal/orchestrator-server:1.0.0
 
+# Levantar Frontend
 docker rm -f frontend-client 2>/dev/null || true
 docker run -d \
   --name frontend-client \
@@ -36,36 +60,28 @@ docker run -d \
   ulisescasal/frontend-client:1.0.0
 ```
 
-**Abrir:** http://localhost:3000
-
-### Probar con curl
-
-```bash
-curl -X POST http://localhost:8080/api/hit1/getRemoteTask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "calculo":"sumar",
-    "parametros":{"a":10,"b":20},
-    "datosAdicionales":{"traceId":"tp2-001"},
-    "imagenDocker":"ulisescasal/task-service:1.0.0"
-  }'
-```
+**Acceso:** [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## HIT2 — Concurrencia, Exclusión Mutua y Reloj de Lamport
+## 2️⃣ HIT2 — Concurrencia y Relojes de Lamport
+
+### Descripción del Funcionamiento
+Este HIT introduce concurrencia real mediante un **Worker Pool** de tamaño configurable. Las tareas no se ejecutan inmediatamente, sino que se encolan en una **Priority Queue**.
+
+- **Reloj de Lamport**: Se utiliza para el ordenamiento lógico de las tareas. Cada cliente mantiene su propio reloj y el servidor sincroniza el suyo con el `max(local, cliente) + 1` al recibir una tarea. Las tareas con menor timestamp tienen prioridad.
+- **Exclusión Mutua**: Se garantiza el acceso seguro a la cola de tareas mediante el uso de estructuras thread-safe (`PriorityBlockingQueue`), evitando condiciones de carrera entre los múltiples hilos del pool.
+- **Worker Pool**: Un conjunto de hilos (workers) consumen tareas de la cola de forma concurrente, optimizando el uso de recursos y mejorando el throughput.
+
+### Arquitectura y Flujo HIT2
+![Flujo HIT2](HIT3/hit2_flujo.jpg)
 
 ### Ejecución con Docker
 
-#### Un solo cliente
-
 ```bash
-# Construir imágenes si no existen
-docker build -t ulisescasal/orchestrator-server:latest ./sdypp
-docker build -t ulisescasal/frontend-hit2:latest ./frontend/HIT2
+docker rm -f orchestrator-server frontend-hit2 2>/dev/null || true
 
-# Levantar orchestrator
-docker rm -f orchestrator-server 2>/dev/null || true
+# Levantar Orquestador con Pool de 4 Workers
 docker run -d \
   --name orchestrator-server \
   -p 8080:8080 \
@@ -75,8 +91,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   ulisescasal/orchestrator-server:latest
 
-# Levantar frontend HIT2 (1 cliente)
-docker rm -f frontend-hit2 2>/dev/null || true
+# Levantar Frontend HIT2
 docker run -d \
   --name frontend-hit2 \
   -p 3001:3001 \
@@ -85,194 +100,77 @@ docker run -d \
   ulisescasal/frontend-hit2:latest
 ```
 
-**Abrir:** http://localhost:3001
+**Acceso:** [http://localhost:3001](http://localhost:3001)
 
-#### Múltiples clientes (5 simultáneos)
+### Benchmark de Throughput (HIT2)
+Para medir cómo escala el sistema variando la cantidad de hilos de ejecución (1, 2, 4, 8):
+```bash
+bash "./Pruebas de HIT/benchmark.sh" 16
+```
+Genera un archivo `benchmark_results.csv` con las métricas de rendimiento y tiempo de respuesta.
 
-Para probar concurrencia real y ver cómo el reloj de Lamport ordena tareas de distintos clientes:
+---
+
+## 3️⃣ HIT3 — Clúster y Tolerancia a Fallos (Bully)
+
+### Descripción del Funcionamiento
+El HIT3 escala el sistema a un entorno de clúster con múltiples instancias del orquestador trabajando de forma coordinada.
+
+- **Balanceador de Carga (Nginx)**: Actúa como punto de entrada único, distribuyendo las peticiones de los clientes entre los nodos del clúster.
+- **Algoritmo Bully**: Mecanismo de elección de líder. Si un nodo detecta que el líder actual no responde (vía heartbeats), inicia una elección. El nodo con el ID más alto que esté operativo se convierte en el nuevo coordinador.
+- **Coordinación de Tareas**: El líder es responsable de recibir las tareas, mantener el estado de salud de cada nodo y asignar el trabajo a los nodos workers disponibles mediante un algoritmo de Round Robin.
+- **Tolerancia a Fallos**: Si cualquier nodo (incluyendo el líder) se cae, el sistema detecta la falla automáticamente y se reorganiza para seguir operando sin pérdida de servicio.
+
+### Arquitectura del Clúster
+![Interacción Lógica HIT3](HIT3/hit3_interaccion_logica.jpg)
+
+### Escenarios de Funcionamiento
+
+#### 1. Flujo Normal
+Las peticiones llegan al balanceador, se redirigen a un nodo, este consulta al líder y el líder asigna la ejecución a un worker disponible.
+![Flujo Normal HIT3](HIT3/hit3_flujo_normal.jpg)
+
+#### 2. Caída de Líder y Elección (Bully)
+Detección de timeout, envío de mensajes de elección y proclamación del nuevo coordinador.
+![Flujo Failover HIT3](HIT3/hit3_flujo_caida_lider_bully.jpg)
+
+### Ejecución (Recomendada con Script)
+La ejecución de HIT3 está totalmente automatizada para facilitar las pruebas de coordinación:
 
 ```bash
-# Levantar orchestrator (si no está corriendo)
-docker rm -f orchestrator-server 2>/dev/null || true
-docker run -d \
-  --name orchestrator-server \
-  -p 8080:8080 \
-  -e TASK_SERVICE_HOST=host.docker.internal \
-  -e HIT2_WORKERS_MAX=2 \
-  --add-host=host.docker.internal:host-gateway \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  ulisescasal/orchestrator-server:latest
-
-# Levantar 5 frontends HIT2 en un solo contenedor
-docker rm -f frontend-hit2 2>/dev/null || true
-docker run -d \
-  --name frontend-hit2 \
-  -p 3011:3011 -p 3012:3012 -p 3013:3013 -p 3014:3014 -p 3015:3015 \
-  -e MULTI_CLIENT=true \
-  -e BACKEND_URL=http://host.docker.internal:8080 \
-  --add-host=host.docker.internal:host-gateway \
-  ulisescasal/frontend-hit2:latest
+# Levantar el cluster, ejecutar pruebas de carga y simular failover automático
+bash "./Pruebas de HIT/hit3_test_suite.sh" --up --base-url http://localhost:8090 --image ulisescasal/task-service:1.0.0
 ```
 
-**Abrir:** http://localhost:3011, http://localhost:3012, http://localhost:3013, http://localhost:3014, http://localhost:3015
+**Opciones del script:**
+- `--up`: Levanta el clúster completo (3 nodos + Nginx) usando Docker Compose.
+- `--down`: Detiene y elimina todos los contenedores del clúster.
+- `--timeout 90`: Define la tolerancia máxima para tareas de larga duración.
 
-Cada puerto es un cliente independiente con su propio reloj de Lamport. Abrí varias pestañas y enviá tareas simultáneas para observar:
+---
 
-- Cómo cada cliente incrementa su Lamport local
-- Cómo el orchestrator ordena las tareas por timestamp en la `PriorityBlockingQueue`
-- Cómo el reloj de cada cliente se sincroniza al recibir la respuesta del servidor (`max(local, server) + 1`)
+## 🛠️ Herramientas y Endpoints de Monitoreo
 
-> **Tip:** Usá `HIT2_WORKERS_MAX=2` con 5 clientes para forzar que las tareas se encolen y veas el ordenamiento por Lamport en acción.
-
-### Probar con curl
-
+### Estado del Clúster (HIT3)
+Permite ver el ID del líder actual, los nodos vivos y su carga:
 ```bash
-# Enviar tarea HIT2
-curl -X POST http://localhost:8080/api/hit2/getRemoteTask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "calculo":"sumar",
-    "parametros":{"a":10,"b":20},
-    "datosAdicionales":{"traceId":"hit2-001"},
-    "imagenDocker":"ulisescasal/task-service:1.0.0",
-    "lamportTimestamp":1
-  }'
+curl http://localhost:8090/internal/hit3/cluster/status | python3 -m json.tool
+```
 
-# Ver status del worker pool
+### Estado del Worker Pool (HIT2)
+Muestra la cantidad de tareas en cola y workers activos:
+```bash
 curl http://localhost:8080/api/hit2/status
 ```
 
-### Ejecución local (sin Docker)
-
-```bash
-# Terminal 1: Orchestrator
-cd sdypp
-HIT2_WORKERS_MAX=4 ./mvnw spring-boot:run
-
-# Terminal 2: Frontend HIT2
-cd frontend/HIT2
-npm install
-npm start
-```
-
-### Documentación completa
-
-Ver [`frontend/HIT2/README.md`](frontend/HIT2/README.md) para la guía detallada de HIT2.
-
 ---
 
-## HIT3 — Clúster con Balanceador y Elección de Líder (Bully)
-
-### Ejecución completa de HIT3 (balanceador + cluster + elección Bully)
-
-Desde la raíz:
+## 🧹 Limpieza del Entorno
 
 ```bash
-# 0) Descargar imagen del orquestador desde Docker Hub (opcional, recomendado)
-docker pull ulisescasal/orchestrator-server:1.0.0
+# Detener contenedores de HIT1/HIT2
+docker rm -f orchestrator-server frontend-client frontend-hit2 2>/dev/null || true
 
-# 1) Levantar 3 nodos + nginx
-docker compose -f docker-compose.hit3.yml up -d
-
-# 2) Verificar que todos estén "healthy"
-docker ps
-
-# 3) Ver quién es el líder
-curl http://localhost:8090/internal/hit3/cluster/status | python3 -m json.tool
-
-# 4) Ejecutar tarea (va al balanceador, el líder la asigna)
-curl -X POST http://localhost:8090/api/hit3/getRemoteTask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "calculo":"sumar",
-    "parametros":{"a":10,"b":20},
-    "datosAdicionales":{"traceId":"hit3-demo"},
-    "imagenDocker":"ulisescasal/task-service:1.0.0"
-  }'
-
-# 5) Carga concurrente rápida
-for i in {1..20}; do
-  curl -s -X POST http://localhost:8090/api/hit3/getRemoteTask \
-    -H "Content-Type: application/json" \
-    -d "{\"calculo\":\"sumar\",\"parametros\":{\"a\":10,\"b\":20},\"datosAdicionales\":{\"traceId\":\"hit3-$i\"},\"imagenDocker\":\"ulisescasal/task-service:1.0.0\"}" &
-done
-wait
-
-# 6) Failover: matar líder y medir recuperación
-docker kill orchestrator-3
-t0=$(date +%s%3N)
-until curl -sf http://localhost:8090/internal/hit3/cluster/status | grep -q '"leaderId".*[12]'; do sleep 0.2; done
-t1=$(date +%s%3N)
-echo "Recovery time: $((t1 - t0)) ms"
-
-# 7) Script de pruebas automatizadas
-bash ./hit3_test_suite.sh --base-url http://localhost:8090 --image ulisescasal/task-service:1.0.0
-
-# 8) Apagar cluster
-docker compose -f docker-compose.hit3.yml down
+# Detener el clúster de HIT3
+bash "./Pruebas de HIT/hit3_test_suite.sh" --down
 ```
-
-### Guía completa HIT3
-
-Ver [`HIT3_README.md`](HIT3_README.md) para arquitectura, troubleshooting, métricas de recuperación y diagrama de secuencia.
-
----
-
-## Detener todo
-
-```bash
-docker rm -f orchestrator-server frontend-client frontend-hit2
-
-# Si levantaste HIT3
-docker compose -f docker-compose.hit3.yml down
-```
-
----
-
-## Arquitectura HIT2
-
-```
-┌─────────────┐     POST /api/hit2/getRemoteTask     ┌─────────────────┐
-│  Frontend   │ ────────────────────────────────────► │  Orquestador    │
-│  HIT2       │                                       │  (:8080)        │
-│  (:3001)    │ ◄──────────────────────────────────── │                 │
-│             │   JSON + lamportTimestamp             │  LamportClock   │
-└─────────────┘                                       │  WorkerPool(N)  │
-                                                      │  PriorityQ      │
-                                                      └────────┬────────┘
-                                                               │
-                                               ┌───────────────┼───────────────┐
-                                               │ docker pull   │ docker run -d -P
-                                               │               │ docker port
-                                               │               │ POST /ejecutar
-                                               │               │ docker stop + rm
-                                               ▼               ▼
-                                        ┌─────────────────────────┐
-                                        │   Task Service (Docker) │
-                                        │   (Puerto dinámico)     │
-                                        └─────────────────────────┘
-```
-
----
-
-## Comandos útiles
-
-```bash
-# Ver contenedores corriendo
-docker ps
-
-# Ver logs
-docker logs -f orchestrator-server
-docker logs -f frontend-client
-docker logs -f frontend-hit2
-```
-
-## Troubleshooting
-
-| Problema | Solución |
-|----------|----------|
-| `pull access denied` | `docker login` |
-| Nombre en uso | `docker rm -f orchestrator-server frontend-client frontend-hit2` |
-| Puerto ocupado | `docker ps` y liberar el contenedor |
-| `Failed to fetch` | Verificá que el orquestador esté corriendo (`docker ps`) |
-| Contenedores no se crean | Verificá que Docker Desktop/Daemon esté corriendo |

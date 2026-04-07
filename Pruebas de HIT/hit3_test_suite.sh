@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_NAME="$(basename "$0")"
+
 BASE_URL="http://localhost:8090"
 IMAGE="ulisescasal/task-service:1.0.0"
-COMPOSE_FILE="docker-compose.hit3.yml"
+COMPOSE_FILE="$ROOT_DIR/docker-compose.hit3.yml"
 REQUEST_TIMEOUT=60
 
 DO_UP="false"
@@ -33,7 +37,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Opción inválida: $1"
-      echo "Uso: bash ./hit3_test_suite.sh [--base-url URL] [--image IMAGE] [--up] [--down] [--timeout SEGUNDOS]"
+      echo "Uso: bash \"$SCRIPT_NAME\" [--base-url URL] [--image IMAGE] [--up] [--down] [--timeout SEGUNDOS]"
       exit 1
       ;;
   esac
