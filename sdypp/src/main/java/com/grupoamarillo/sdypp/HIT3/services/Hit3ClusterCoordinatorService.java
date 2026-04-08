@@ -93,18 +93,24 @@ public class Hit3ClusterCoordinatorService {
         int currentLeader = leaderId.get();
         if(currentLeader > 0 && currentLeader != properties.getNodeId()){
             try{
-                return sendTaskToNode(currentLeader, INTERNAL_PREFIX + "/assign", request);
+                log.info("[Nodo {}] Recibi petición  no soy lider envio a nodo {}",properties.getNodeId(), currentLeader);
+                return sendTaskToNode(currentLeader, INTERNAL_PREFIX + "/assign", request,true);
             } catch (Exception e) {
                 log.warn("No se pudo contactar al líder {}. Inicio elección.", currentLeader);
                 startElection();
+                throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "No se pudo contactar al lider para asignar la tarea"
+                );
             }
         }
 
         if (isLeader()) {
             return assignTaskAsLeader(request);
         }
-
-        return remoteTaskService.ejecutarTareaRemota(request);
+        throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "No hay líder conocido para asignar la tarea");
     }
 
     // ASignación a lider, el lider solo ejecuta
@@ -126,11 +132,14 @@ public class Hit3ClusterCoordinatorService {
             setBusy(nodeId, true); // Marco al nodo como ocupado ya que estara ejecutando la tarea
 
             try {
+                
                 if (nodeId == properties.getNodeId()) {
+                    log.info("[NODO {} LIDER] Ejecutando tarea {}", properties.getNodeId(), request);
                     return remoteTaskService.ejecutarTareaRemota(request);
 
                 }
-                return sendTaskToNode(nodeId, INTERNAL_PREFIX + "/execute", request);
+                log.info("[Nodo {} LIDER] Envio tarea a nodo {}", properties.getNodeId(), nodeId);
+                return sendTaskToNode(nodeId, INTERNAL_PREFIX + "/execute", request,true);
             } catch (Exception e) {
                 markDead(nodeId);
                 log.warn("Nodo {} falló ejecutando. Se interara con otro. ", nodeId);
@@ -143,6 +152,7 @@ public class Hit3ClusterCoordinatorService {
 
     // Endpoint interno /execute para ejecutar tareas localmente sin asignar
     public RemoteTaskResponse executeLocal(RemoteTaskRequest request) {
+        log.info("[Nodo {}] Ejecutando tarea. {}", properties.getNodeId(), request);
         return remoteTaskService.ejecutarTareaRemota(request);
     }
 
@@ -342,7 +352,8 @@ public class Hit3ClusterCoordinatorService {
         try{
             // Envío al nodo remoto mi intención de ser líder (Hit3ElectionRequest con mi ID)
             String body = sendJson(nodeId, INTERNAL_PREFIX + "/election",
-                    new Hit3ElectionRequest(properties.getNodeId()));
+                    new Hit3ElectionRequest(properties.getNodeId()),
+                 Duration.ofMillis(properties.getControlTimeoutMs()));
             // Como obtuve respuesta, marco ese nodo como vivo
             markAlive(nodeId);
             // Convierto la respuesta JSON en objeto Hit3ElectionResponse y la devuelvo
@@ -355,7 +366,10 @@ public class Hit3ClusterCoordinatorService {
 
     private boolean pingNode(int nodeId, Hit3HeartbeatRequest request){
         try{
-            String body = sendJson(nodeId, INTERNAL_PREFIX + "/heartbeat", request);
+            String body = sendJson(nodeId, INTERNAL_PREFIX + "/heartbeat", request,
+                              Duration.ofMillis(properties.getControlTimeoutMs())
+            );
+
             Hit3HeartbeatResponse response = objectMapper.readValue(body, Hit3HeartbeatResponse.class);
             markAlive(nodeId);
 
@@ -371,9 +385,12 @@ public class Hit3ClusterCoordinatorService {
         }
     }
 
-    private RemoteTaskResponse sendTaskToNode(int nodeId, String path, RemoteTaskRequest request){
+    private RemoteTaskResponse sendTaskToNode(int nodeId, String path, RemoteTaskRequest request, boolean isTask){
         try{
-            String body = sendJson(nodeId, path, request);
+            Duration timeout = isTask 
+                ? Duration.ofMillis(properties.getTaskTimeoutMs())
+                : Duration.ofMillis(properties.getControlTimeoutMs());
+            String body = sendJson(nodeId, path, request,timeout);
             return objectMapper.readValue(body, RemoteTaskResponse.class); //Mapeo el json a una response
         } catch (Exception e){
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No se pudo ejecutar en nodo " + nodeId);
@@ -382,7 +399,9 @@ public class Hit3ClusterCoordinatorService {
 
     private void sendVoid(int nodeId, String path, Object payload){
         try{
-            sendJson(nodeId, path, payload);
+            sendJson(nodeId, path, payload,
+                 Duration.ofMillis(properties.getControlTimeoutMs())
+            );
         } catch (Exception e){
             markDead(nodeId);
         }
@@ -404,7 +423,7 @@ public class Hit3ClusterCoordinatorService {
      * @throws IllegalStateException    si el código de respuesta es >= 400
      * @throws Exception                si ocurre un error de I/O o timeout (2 s)
      */
-    private String sendJson(int nodeId, String path, Object payload) throws Exception{
+    private String sendJson(int nodeId, String path, Object payload, Duration timeout) throws Exception{
         NodeAddress address = nodesById.get(nodeId);
 
         if (address == null){
@@ -413,7 +432,7 @@ public class Hit3ClusterCoordinatorService {
         String body = objectMapper.writeValueAsString(payload);
         HttpRequest request = HttpRequest.newBuilder()
                             .uri(URI.create("http://" + address.host() + ":" + address.port() + path))
-                            .timeout(Duration.ofSeconds(2))
+                            .timeout(timeout)
                             .header("Content-Type", "application/json")
                             .POST(HttpRequest.BodyPublishers.ofString(body))
                             .build();

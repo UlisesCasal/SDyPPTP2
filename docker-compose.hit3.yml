@@ -13,7 +13,11 @@ services:
       HIT3_CLUSTER_HEARTBEAT_INTERVAL_MS: "1000"
       HIT3_CLUSTER_HEARTBEAT_TIMEOUT_MS: "3000"
       HIT3_CLUSTER_ELECTION_TIMEOUT_MS: "2500"
+      HIT3_CLUSTER_CONTROL_TIMEOUT_MS: "2000"
+      HIT3_CLUSTER_TASK_TIMEOUT_MS: "120000"
       TASK_SERVICE_HOST: "host.docker.internal"
+      # Limit worker from Hit2 to 1, not used in Hit3
+      HIT2_WORKERS_MAX: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -32,7 +36,11 @@ services:
       HIT3_CLUSTER_HEARTBEAT_INTERVAL_MS: "1000"
       HIT3_CLUSTER_HEARTBEAT_TIMEOUT_MS: "3000"
       HIT3_CLUSTER_ELECTION_TIMEOUT_MS: "2500"
+      HIT3_CLUSTER_CONTROL_TIMEOUT_MS: "2000"
+      HIT3_CLUSTER_TASK_TIMEOUT_MS: "120000"
       TASK_SERVICE_HOST: "host.docker.internal"
+      # Limit worker from Hit2 to 1, not used in Hit3
+      HIT2_WORKERS_MAX: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -51,7 +59,11 @@ services:
       HIT3_CLUSTER_HEARTBEAT_INTERVAL_MS: "1000"
       HIT3_CLUSTER_HEARTBEAT_TIMEOUT_MS: "3000"
       HIT3_CLUSTER_ELECTION_TIMEOUT_MS: "2500"
+      HIT3_CLUSTER_CONTROL_TIMEOUT_MS: "2000"
+      HIT3_CLUSTER_TASK_TIMEOUT_MS: "120000"
       TASK_SERVICE_HOST: "host.docker.internal"
+      # Limit worker from Hit2 to 1, not used in Hit3
+      HIT2_WORKERS_MAX: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
