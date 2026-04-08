@@ -17,4 +17,7 @@ public class Hit3ClusterProperties {
     private long heartbeatTimeoutMs = 3000;
     private long electionTimeoutMs = 2500;
 
+    private long controlTimeoutMs = 2000;
+    private long taskTimeoutMs = 120000;
+
 }
